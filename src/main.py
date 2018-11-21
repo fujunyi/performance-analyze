@@ -64,6 +64,19 @@ def get_balance():
                 ['trade_day', 'pid', 'balance', 'occupied']]
 
 
+def get_pnl():
+    for day_idx in range(len(tradedays)):
+        tdate = tradedays["tdate"].iloc[day_idx]
+        # 获取年份
+        year = int(tdate / 10000)
+        # 获取文件地址
+        file_path = os.path.join(filedb_path, rf'filedb\daily_pnl\{year}\{tdate}\{tdate}.daily_pnl.csv')
+        # 如果文件存在，那么读取并返回文件
+        if os.path.exists(file_path):
+            yield pd.read_csv(file_path, parse_dates=['trade_day'])[
+                ['trade_day', 'pid', 'code', 'profit', 'fee']]
+
+
 if __name__ == '__main__':
     filedb_path = r"\\fatman\data\broker"
     pd.set_option('display.max_columns', 100)
@@ -135,16 +148,35 @@ if __name__ == '__main__':
 
     # balances:   trade_day      pid     balance      margin
 
+    # 获取daily_pnl
+    pnl = pd.concat(get_pnl())
+    # 筛选出pid不含有'_' '-' 've'的持仓, na=False? there are NaN values?
+    pnl = pnl[~pnl['pid'].str.contains('_|-|ve', na=False)]
+    pnl = pnl.reset_index(drop=True)
+    pnl = pnl[['trade_day', 'pid', 'profit', 'fee']].groupby(['trade_day', 'pid']).sum().reset_index()
+    balances = pd.merge(balances, pnl, on=['trade_day', 'pid'])
+    # 获取基金单位净值
+    balances = balances.loc[balances.balance != 0]
+    balances['net_profit'] = (balances['profit'] - balances['fee']) / balances['balance'] + 1
+    # balances['net_profit'] = balances['net_profit'].cumsum()
+
+    balances: pd.DataFrame = balances.to_csv('balances.csv')
+    exit()
+
     # 获取股指期货保证金占比
-    stock_index_margin = positions.loc[(positions['product'] == 'if') | (positions['product'] == 'ih') | (positions['product'] == 'ic')].groupby(['trade_day', 'pid', 'code'])['margin'].max().groupby(['trade_day', 'pid']).sum()
+    stock_index_margin = positions.loc[
+        (positions['product'] == 'if') | (positions['product'] == 'ih') | (positions['product'] == 'ic')].groupby(
+        ['trade_day', 'pid', 'code'])['margin'].max().groupby(['trade_day', 'pid']).sum()
     stock_index_margin = stock_index_margin.reset_index()
     stock_index_margin = stock_index_margin.rename(columns={"margin": "stock_index_margin"})
     balances = pd.merge(balances, stock_index_margin, on=['trade_day', 'pid'])
     balances['stock_index_proportion'] = balances['stock_index_margin'] / balances['balance']
 
     # 获取商品期货保证金占比
-    commodity_position = positions.loc[~(positions['product'] == 'if') & ~(positions['product'] == 'ih') & ~(positions['product'] == 'ic')]
-    commodity_margin = commodity_position.groupby(['trade_day', 'pid', 'code'])['margin'].max().groupby(['trade_day', 'pid']).sum().reset_index()
+    commodity_position = positions.loc[
+        ~(positions['product'] == 'if') & ~(positions['product'] == 'ih') & ~(positions['product'] == 'ic')]
+    commodity_margin = commodity_position.groupby(['trade_day', 'pid', 'code'])['margin'].max().groupby(
+        ['trade_day', 'pid']).sum().reset_index()
     commodity_margin = commodity_margin.rename(columns={"margin": "commodity_margin"})
     balances = pd.merge(balances, commodity_margin, on=['trade_day', 'pid'])
     balances['commodity_proportion'] = balances['commodity_margin'] / balances['balance']
@@ -205,6 +237,7 @@ if __name__ == '__main__':
     balances = pd.merge(balances, ic_short_value, on=['trade_day', 'pid'])
 
     balances['ic_value'] = balances['ic_long_value'] - balances['ic_short_value']
-    balances: pd.DataFrame = balances.to_csv('balances.csv')
 
+    # 最终结果写出到balances.csv
+    balances: pd.DataFrame = balances.to_csv('balances.csv')
     exit()
