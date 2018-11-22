@@ -136,7 +136,7 @@ if __name__ == '__main__':
     positions: pd.DataFrame = positions.reset_index(drop=True)
 
     # positions:    trade_day    pid    code    dir    prev_pos    cur_pos    product    multiple    margin_ratio    close    total_pos    value    margin
-    # positions.to_csv('posrtions.csv')
+    # positions.to_csv('positions.csv')
 
     # 获取balances并且合并成一个DataFrame
     balances = pd.concat(get_balance())
@@ -145,6 +145,8 @@ if __name__ == '__main__':
     balances = balances[~balances['pid'].str.contains('_|-|ve')]
     # 重新reset_index
     balances = balances.reset_index(drop=True)
+    # print(balances)
+    # exit()
 
     # balances:   trade_day      pid     balance      margin
 
@@ -154,14 +156,14 @@ if __name__ == '__main__':
     pnl = pnl[~pnl['pid'].str.contains('_|-|ve', na=False)]
     pnl = pnl.reset_index(drop=True)
     pnl = pnl[['trade_day', 'pid', 'profit', 'fee']].groupby(['trade_day', 'pid']).sum().reset_index()
-    balances = pd.merge(balances, pnl, on=['trade_day', 'pid'])
-    # 获取基金单位净值
+    balances = pd.merge(balances, pnl, on=['trade_day', 'pid'], how='outer')
+    # 获取净收益
     balances = balances.loc[balances.balance != 0]
-    balances['net_profit'] = (balances['profit'] - balances['fee']) / balances['balance'] + 1
+    balances['net_profit'] = (balances['profit'] - balances['fee'])
     # balances['net_profit'] = balances['net_profit'].cumsum()
 
-    balances: pd.DataFrame = balances.to_csv('balances.csv')
-    exit()
+    # balances: pd.DataFrame = balances.to_csv('balances.csv')
+    # exit()
 
     # 获取股指期货保证金占比
     stock_index_margin = positions.loc[
@@ -169,8 +171,10 @@ if __name__ == '__main__':
         ['trade_day', 'pid', 'code'])['margin'].max().groupby(['trade_day', 'pid']).sum()
     stock_index_margin = stock_index_margin.reset_index()
     stock_index_margin = stock_index_margin.rename(columns={"margin": "stock_index_margin"})
-    balances = pd.merge(balances, stock_index_margin, on=['trade_day', 'pid'])
-    balances['stock_index_proportion'] = balances['stock_index_margin'] / balances['balance']
+    balances = pd.merge(balances, stock_index_margin, on=['trade_day', 'pid'], how='outer')
+    # print(balances)
+    # exit()
+    # balances['stock_index_proportion'] = balances['stock_index_margin'] / balances['balance']
 
     # 获取商品期货保证金占比
     commodity_position = positions.loc[
@@ -178,24 +182,24 @@ if __name__ == '__main__':
     commodity_margin = commodity_position.groupby(['trade_day', 'pid', 'code'])['margin'].max().groupby(
         ['trade_day', 'pid']).sum().reset_index()
     commodity_margin = commodity_margin.rename(columns={"margin": "commodity_margin"})
-    balances = pd.merge(balances, commodity_margin, on=['trade_day', 'pid'])
-    balances['commodity_proportion'] = balances['commodity_margin'] / balances['balance']
+    balances = pd.merge(balances, commodity_margin, on=['trade_day', 'pid'], how='outer')
+    # balances['commodity_proportion'] = balances['commodity_margin'] / balances['balance']
 
     # 商品期货合约价值(不扎差not net）commodity_nn_value
     commodity_nn_value = commodity_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     commodity_nn_value = commodity_nn_value.rename(columns={"value": "commodity_nn_value"})
-    balances = pd.merge(balances, commodity_nn_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, commodity_nn_value, on=['trade_day', 'pid'], how='outer')
 
     # 商品期货合约价值（扎差net）commodity_net_value
     commodity_long_position = commodity_position.loc[(commodity_position['dir'] == 'Long')]
     commodity_long_value = commodity_long_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     commodity_long_value = commodity_long_value.rename(columns={"value": "commodity_long_value"})
-    balances = pd.merge(balances, commodity_long_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, commodity_long_value, on=['trade_day', 'pid'], how='outer')
 
     commodity_short_position = commodity_position.loc[(commodity_position['dir'] == 'Short')]
     commodity_short_value = commodity_short_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     commodity_short_value = commodity_short_value.rename(columns={"value": "commodity_short_value"})
-    balances = pd.merge(balances, commodity_short_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, commodity_short_value, on=['trade_day', 'pid'], how='outer')
 
     balances['commodity_net_value'] = balances['commodity_long_value'] - balances['commodity_short_value']
 
@@ -203,12 +207,12 @@ if __name__ == '__main__':
     if_long_position = positions.loc[(positions['product'] == 'if') & (positions['dir'] == 'Long')]
     if_long_value = if_long_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     if_long_value = if_long_value.rename(columns={"value": "if_long_value"})
-    balances = pd.merge(balances, if_long_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, if_long_value, on=['trade_day', 'pid'], how='outer')
 
     if_short_position = positions.loc[(positions['product'] == 'if') & (positions['dir'] == 'Short')]
     if_short_value = if_short_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     if_short_value = if_short_value.rename(columns={"value": "if_short_value"})
-    balances = pd.merge(balances, if_short_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, if_short_value, on=['trade_day', 'pid'], how='outer')
 
     balances['if_value'] = balances['if_long_value'] - balances['if_short_value']
 
@@ -216,12 +220,12 @@ if __name__ == '__main__':
     ih_long_position = positions.loc[(positions['product'] == 'ih') & (positions['dir'] == 'Long')]
     ih_long_value = ih_long_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     ih_long_value = ih_long_value.rename(columns={"value": "ih_long_value"})
-    balances = pd.merge(balances, ih_long_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, ih_long_value, on=['trade_day', 'pid'], how='outer')
 
     ih_short_position = positions.loc[(positions['product'] == 'ih') & (positions['dir'] == 'Short')]
     ih_short_value = ih_short_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     ih_short_value = ih_short_value.rename(columns={"value": "ih_short_value"})
-    balances = pd.merge(balances, ih_short_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, ih_short_value, on=['trade_day', 'pid'], how='outer')
 
     balances['ih_value'] = balances['ih_long_value'] - balances['ih_short_value']
 
@@ -229,14 +233,26 @@ if __name__ == '__main__':
     ic_long_position = positions.loc[(positions['product'] == 'ic') & (positions['dir'] == 'Long')]
     ic_long_value = ic_long_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     ic_long_value = ic_long_value.rename(columns={"value": "ic_long_value"})
-    balances = pd.merge(balances, ic_long_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, ic_long_value, on=['trade_day', 'pid'], how='outer')
 
     ic_short_position = positions.loc[(positions['product'] == 'ic') & (positions['dir'] == 'Short')]
     ic_short_value = ic_short_position[['trade_day', 'pid', 'value']].groupby(['trade_day', 'pid']).sum()
     ic_short_value = ic_short_value.rename(columns={"value": "ic_short_value"})
-    balances = pd.merge(balances, ic_short_value, on=['trade_day', 'pid'])
+    balances = pd.merge(balances, ic_short_value, on=['trade_day', 'pid'], how='outer')
 
     balances['ic_value'] = balances['ic_long_value'] - balances['ic_short_value']
+
+    # 按trade_day进行合并
+    balances = balances.drop(['pid'], axis=1)
+    balances = balances.groupby('trade_day').sum().reset_index()
+    # 获取股指期货保证金占比
+    balances['stock_index_proportion'] = balances['stock_index_margin'] / balances['balance']
+    # 获取商品期货保证金占比
+    balances['commodity_proportion'] = balances['commodity_margin'] / balances['balance']
+    # 获取基金单位净值
+    balances['net_asset_value'] = balances['net_profit'] / balances['balance']
+    balances['net_asset_value'] = balances['net_asset_value'].expanding().sum()
+    balances['net_asset_value'] += 1
 
     # 最终结果写出到balances.csv
     balances: pd.DataFrame = balances.to_csv('balances.csv')
