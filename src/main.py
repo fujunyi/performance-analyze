@@ -244,15 +244,15 @@ if __name__ == '__main__':
 
     # 按trade_day进行合并
     balances = balances.drop(['pid'], axis=1)
-    balances = balances.groupby('trade_day').sum().reset_index()
+    balances = balances.groupby('trade_day', as_index=False).sum().reset_index()
     # 获取股指期货保证金占比
     balances['stock_index_proportion'] = balances['stock_index_margin'] / balances['balance']
     # 获取商品期货保证金占比
     balances['commodity_proportion'] = balances['commodity_margin'] / balances['balance']
     # 获取基金单位净值
     balances['net_asset_value'] = balances['net_profit'] / balances['balance']
-    balances['net_asset_value'] = balances['net_asset_value'].expanding().sum()
-    balances['net_asset_value'] += 1
+    balances['net_asset_value'] = balances['net_asset_value'].fillna(0).cumsum() + 1
+
 
     # 最终结果写出到balances.csv
     balances: pd.DataFrame = balances.to_csv('balances.csv')
